@@ -1,4 +1,4 @@
-name: Build Custom VLC (The Masterpiece)
+name: Build VLC (Final Precision Strike)
 
 on:
   push:
@@ -19,7 +19,7 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Install Official Dependencies (from Wiki)
+      - name: Install Official Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y automake ant autopoint cmake build-essential libtool-bin \
@@ -28,28 +28,23 @@ jobs:
 
       - name: Build Custom VLC
         run: |
-          # 1. Gitの身分証明（パッチ適用エラー対策）
           git config --global user.email "worker@example.com"
           git config --global user.name "VLC Builder"
 
-          # 2. NDKの場所を特定（308.jpg対策：最新のv27以降を狙い撃ち）
+          # 1. NDKを「v27」に確実に固定 (311.jpgの要求に合わせる)
           export ANDROID_SDK=$ANDROID_SDK_ROOT
-          # GitHubにあるNDKの中から最も新しいバージョンのパスを取得
-          LATEST_NDK=$(ls -d $ANDROID_SDK_ROOT/ndk/* | sort -V | tail -n 1)
-          export ANDROID_NDK=$LATEST_NDK
+          # GitHub Runnerに存在する v27 のパスを特定してセット
+          NDK_PATH=$(ls -d $ANDROID_SDK_ROOT/ndk/27.* | head -n 1)
+          export ANDROID_NDK=$NDK_PATH
           
-          echo "Using Android SDK: $ANDROID_SDK"
-          echo "Using Android NDK: $ANDROID_NDK"
+          echo "Using Specified NDK: $ANDROID_NDK"
 
-          # 3. 実行スクリプトと権限の自動修復（場所エラー対策）
+          # 2. 実行場所の特定
           SCRIPT_PATH=$(find . -name compile.sh | head -n 1)
-          echo "Found script at: $SCRIPT_PATH"
           chmod +x "$SCRIPT_PATH"
-          # 内部で使われるgradlewもすべて実行可能にする
           find . -name gradlew -exec chmod +x {} +
 
-          # 4. ビルド実行（Dimensity 9500 = arm64-v8a）
-          # -r はリリースビルド（軽量・高速）
+          # 3. 実行
           $SCRIPT_PATH -a arm64-v8a -r
 
       - name: Upload APK
