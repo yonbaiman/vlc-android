@@ -1,0 +1,28 @@
+name: Build Custom VLC for Dimensity 9500
+
+on:
+  push:
+    branches: [ master, main ]  # あなたのブランチ名に合わせてください
+  workflow_dispatch:            # 手動実行ボタンも追加
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # VLC公式が提供しているAndroidビルド用Dockerイメージを使用（2026年最新版を想定）
+    container: registry.videolan.org/vlc-debian-android:20240501140538
+
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      - name: Build Custom VLC APK
+        run: |
+          # Dimensity 9500向けのarm64-v8aを指定してビルド
+          # コンパイルには時間がかかるので、気長に待ちます
+          ./compile.sh -a arm64-v8a -r
+
+      - name: Upload Custom APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: vlc-custom-nplayer-style
+          path: application/vlc-android/build/outputs/apk/release/*.apk
