@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 【最適化1】 OOM(メモリ不足)対策としてSwap領域を8GB追加
+      # 【インフラ最適化1】 OOM(メモリ不足)対策としてSwap領域を8GB追加
       - name: Allocate Swap Space
         run: |
           sudo fallocate -l 8G /swapfile
@@ -20,8 +20,12 @@ jobs:
           echo "Swap space allocated:"
           free -h
 
+      # 【修正箇所】 VLC本体など、依存するサブモジュールも全て再帰的に取得する
       - name: Checkout Source
         uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+          fetch-depth: 0
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -29,7 +33,7 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # 【最適化2】 ccacheパッケージの追加
+      # 【インフラ最適化2】 依存関係にccacheを追加
       - name: Install Official Dependencies
         run: |
           sudo apt-get update
@@ -37,7 +41,7 @@ jobs:
             patch pkg-config protobuf-compiler ragel subversion unzip git \
             flex python3 wget gperf nasm ccache
 
-      # 【最適化3】 GitHub Actionsのキャッシュ機構を利用してccacheを保存・復元
+      # 【インフラ最適化3】 GitHub Actionsのキャッシュ機構を利用してccacheを保存・復元
       - name: Setup ccache caching
         uses: actions/cache@v4
         with:
@@ -62,7 +66,7 @@ jobs:
           export ANDROID_NDK=$NDK_PATH
           echo "Using Specified NDK: $ANDROID_NDK"
 
-          # 【最適化4】 メモリ消費を抑えるため並列コンパイル数を2に制限し、ccacheを有効化
+          # 【インフラ最適化4】 メモリ消費を抑えるため並列コンパイル数を2に制限し、ccacheを有効化
           export MAKEFLAGS="-j2"
           export USE_CCACHE=1
           export CCACHE_DIR=~/.cache/ccache
