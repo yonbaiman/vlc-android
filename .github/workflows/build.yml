@@ -1,4 +1,4 @@
-Name: Build VLC (Free Tier Optimized)
+name: Build VLC (Free Tier Optimized)
 
 on:
   push:
