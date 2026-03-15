@@ -13,7 +13,7 @@ jobs:
       - name: Checkout Source
         uses: actions/checkout@v6
 
-- name: Build Custom VLC APK inside Docker
+      - name: Build Custom VLC APK inside Docker
         run: |
           docker run --rm \
             -v ${{ github.workspace }}:/workspace \
