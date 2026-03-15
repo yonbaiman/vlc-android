@@ -1,4 +1,4 @@
-name: Build Custom VLC (The One That Actually Works)
+name: Build Custom VLC (The Final Solution)
 
 on:
   push:
@@ -19,26 +19,29 @@ jobs:
             -v ${{ github.workspace }}:/workspace \
             -w /workspace \
             registry.videolan.org/vlc-debian-android \
-            bash -c '
-              # 1. Java 17をインストール
+            bash -c "
+              # 1. Java 17 をインストール
               apt-get update && apt-get install -y openjdk-17-jdk
               
-              # 2. 【魔法の一行】Javaの場所を自動特定してセット（これで298.jpgのエラーを回避）
-              export JAVA_HOME=$(readlink -f /usr/bin/java | sed "s:/bin/java::")
+              # 2. システム全体の標準Javaを強制的に17へ切り替え（299.jpgへの対策）
+              update-alternatives --set java /usr/lib/jvm/java-17-openjdk-amd64/bin/java
+              update-alternatives --set javac /usr/lib/jvm/java-17-openjdk-amd64/bin/javac
               
-              # 3. 環境変数を同期
+              # 3. 環境変数を定義（SDK/NDKの場所を教え、Javaのパスを通す）
+              export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
               export ANDROID_SDK=/sdk
               export ANDROID_NDK=/sdk/android-ndk
-              export PATH=$JAVA_HOME/bin:$PATH
+              export PATH=\$JAVA_HOME/bin:\$PATH
               
-              # 4. スクリプトを探して実行
-              SCRIPT_PATH=$(find . -maxdepth 3 -name compile.sh | head -1)
-              chmod +x "$SCRIPT_PATH"
-              ./"$SCRIPT_PATH" -a arm64-v8a -r
-            '
+              # 4. スクリプトを探して実行（場所がどこでも見つけ出す）
+              SCRIPT_PATH=\$(find . -maxdepth 3 -name compile.sh | head -1)
+              chmod +x \"\$SCRIPT_PATH\"
+              ./\"\$SCRIPT_PATH\" -a arm64-v8a -r
+            "
 
       - name: Upload Custom APK
         uses: actions/upload-artifact@v4
         with:
           name: vlc-custom-nplayer-style
           path: "**/*.apk"
+          if-no-files-found: error
