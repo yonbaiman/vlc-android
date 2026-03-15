@@ -1,4 +1,4 @@
-name: Build Custom VLC (The Final Solution)
+name: Build Custom VLC (The One That Actually Works)
 
 on:
   push:
@@ -14,31 +14,31 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build Custom VLC APK inside Docker
-        # 全ての環境が整っている公式Dockerを使い、内部でパスを自動解決させます
         run: |
           docker run --rm \
             -v ${{ github.workspace }}:/workspace \
             -w /workspace \
             registry.videolan.org/vlc-debian-android \
             bash -c '
-              # 1. Java 17 をインストール
+              # 1. Java 17をインストール
               apt-get update && apt-get install -y openjdk-17-jdk
-              export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
               
-              # 2. SDK/NDKのパスをコンテナ内の標準位置に強制セット
+              # 2. 【魔法の一行】Javaの場所を自動特定してセット（これで298.jpgのエラーを回避）
+              export JAVA_HOME=$(readlink -f /usr/bin/java | sed "s:/bin/java::")
+              
+              # 3. 環境変数を同期
               export ANDROID_SDK=/sdk
               export ANDROID_NDK=/sdk/android-ndk
               export PATH=$JAVA_HOME/bin:$PATH
               
-              # 3. compile.sh を探して実行
-              SCRIPT_PATH=$(find . -maxdepth 2 -name compile.sh | head -1)
+              # 4. スクリプトを探して実行
+              SCRIPT_PATH=$(find . -maxdepth 3 -name compile.sh | head -1)
               chmod +x "$SCRIPT_PATH"
-              "$SCRIPT_PATH" -a arm64-v8a -r
+              ./"$SCRIPT_PATH" -a arm64-v8a -r
             '
 
       - name: Upload Custom APK
         uses: actions/upload-artifact@v4
         with:
           name: vlc-custom-nplayer-style
-          path: "**/*.apk" # どこに生成されても拾えるようにワイルドカード指定
-          if-no-files-found: error
+          path: "**/*.apk"
