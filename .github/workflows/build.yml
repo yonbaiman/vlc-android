@@ -1,4 +1,4 @@
-name: Build Custom VLC (Native Runner Mode)
+name: Build Custom VLC (The Final Solution)
 
 on:
   push:
@@ -7,37 +7,38 @@ on:
 
 jobs:
   build:
-    # Dockerを使わず、GitHubの最新Ubuntu環境で直接ビルドする
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: Install Build Dependencies
-        # VLCのコンパイルに必要なLinuxツール群を一括インストール
+      - name: Build Custom VLC APK inside Docker
+        # 全ての環境が整っている公式Dockerを使い、内部でパスを自動解決させます
         run: |
-          sudo apt-get update
-          sudo apt-get install -y automake ant autopoint cmake build-essential libtool-bin \
-            patch pkg-config protobuf-compiler ragel subversion unzip wget git \
-            nasm execstack
-
-      - name: Build Custom VLC APK
-        # GitHub Runnerには最初からAndroid SDKが設定されているので、そのまま叩ける
-        run: |
-          chmod +x buildsystem/compile.sh
-          # Dimensity 9500向けARM64、リリースビルド
-          ./buildsystem/compile.sh -a arm64-v8a -r
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            registry.videolan.org/vlc-debian-android \
+            bash -c '
+              # 1. Java 17 をインストール
+              apt-get update && apt-get install -y openjdk-17-jdk
+              export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+              
+              # 2. SDK/NDKのパスをコンテナ内の標準位置に強制セット
+              export ANDROID_SDK=/sdk
+              export ANDROID_NDK=/sdk/android-ndk
+              export PATH=$JAVA_HOME/bin:$PATH
+              
+              # 3. compile.sh を探して実行
+              SCRIPT_PATH=$(find . -maxdepth 2 -name compile.sh | head -1)
+              chmod +x "$SCRIPT_PATH"
+              "$SCRIPT_PATH" -a arm64-v8a -r
+            '
 
       - name: Upload Custom APK
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: vlc-custom-nplayer-style
-          path: application/vlc-android/build/outputs/apk/release/*.apk
+          path: "**/*.apk" # どこに生成されても拾えるようにワイルドカード指定
           if-no-files-found: error
