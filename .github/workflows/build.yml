@@ -1,51 +1,17 @@
-name: Build VLC (Native Final Solution)
-
-on:
-  push:
-    branches: [ master, main ]
-  workflow_dispatch:
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout Source
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: Install Official Packages
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y automake ant autopoint cmake build-essential libtool-bin \
-            patch pkg-config protobuf-compiler ragel subversion unzip git \
-            flex python3 wget gperf nasm
-
       - name: Build Custom VLC
         run: |
-          # 【修正ポイント】compile.shを自動で探し出す
+          # 【304.jpg対策】Gitの身分証明をセット（ダミーでOK）
+          git config --global user.email "github-actions@example.com"
+          git config --global user.name "GitHub Actions"
+
+          # compile.shを自動で探し出す
           SCRIPT_PATH=$(find . -name compile.sh | head -n 1)
-          if [ -z "$SCRIPT_PATH" ]; then
-            echo "Error: compile.sh could not be found anywhere!"
-            exit 1
-          fi
           echo "Found script at: $SCRIPT_PATH"
           chmod +x "$SCRIPT_PATH"
 
-          # Wikiの要求通り環境変数をセット（GitHub標準の最新版を使用）
+          # 環境変数をセット
           export ANDROID_SDK=$ANDROID_SDK_ROOT
           export ANDROID_NDK=$ANDROID_NDK_LATEST_HOME
           
-          # 特定したパスで実行
+          # 実行
           $SCRIPT_PATH -a arm64-v8a -r
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: vlc-custom-apk
-          path: "**/*.apk"
