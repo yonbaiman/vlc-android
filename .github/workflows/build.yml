@@ -8,13 +8,13 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    # バージョン指定なしの最新ビルド環境
+    # VLC公式の最新ビルド環境
     container: registry.videolan.org/vlc-debian-android
 
     steps:
       - name: Checkout Source
-        # Node.js 24対応の最新版 (v7)
-        uses: actions/checkout@v7
+        # 動作実績あり：Node.js 24対応
+        uses: actions/checkout@v6
 
       - name: Build Custom VLC APK
         run: |
@@ -23,7 +23,7 @@ jobs:
           ./compile.sh -a arm64-v8a -r
 
       - name: Upload Custom APK
-        # アーティファクト保存も最新版 (v7)
+        # 動作実績あり：最新アーティファクト処理
         uses: actions/upload-artifact@v7
         with:
           name: vlc-custom-nplayer-style
