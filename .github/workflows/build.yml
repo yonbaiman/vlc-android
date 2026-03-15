@@ -19,7 +19,7 @@ jobs:
             -v ${{ github.workspace }}:/workspace \
             -w /workspace \
             registry.videolan.org/vlc-debian-android \
-            bash -c "chmod +x buildsystem/compile.sh && ./buildsystem/compile.sh -a arm64-v8a -r"
+            bash -c 'apt-get update && apt-get install -y openjdk-17-jdk && export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 && export PATH=$JAVA_HOME/bin:$PATH && chmod +x buildsystem/compile.sh && ./buildsystem/compile.sh -a arm64-v8a -r'
 
       - name: Upload Custom APK
         uses: actions/upload-artifact@v7
