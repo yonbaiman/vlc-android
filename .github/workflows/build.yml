@@ -8,21 +8,24 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    # VLC公式の最新ビルド環境
-    container: registry.videolan.org/vlc-debian-android
+    # 【重要】コンテナ指定を削除。ホスト(Ubuntu)でアクションを実行する
 
     steps:
       - name: Checkout Source
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
-      - name: Build Custom VLC APK
+      - name: Build Custom VLC APK inside Docker
+        # ソースを古いVLCコンテナにマウント( -v )して、コンパイルだけさせる
         run: |
-          chmod +x compile.sh
-          # Dimensity 9500 (ARM64) 向けリリースビルド
-          ./compile.sh -a arm64-v8a -r
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            registry.videolan.org/vlc-debian-android \
+            bash -c "chmod +x compile.sh && ./compile.sh -a arm64-v8a -r"
 
       - name: Upload Custom APK
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v7
         with:
           name: vlc-custom-nplayer-style
           path: application/vlc-android/build/outputs/apk/release/*.apk
+          if-no-files-found: error
