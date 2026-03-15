@@ -1,17 +1,56 @@
+name: Build Custom VLC (Master Fix)
+
+on:
+  push:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Install Official Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y automake ant autopoint cmake build-essential libtool-bin \
+            patch pkg-config protobuf-compiler ragel subversion unzip git \
+            flex python3 wget gperf nasm
+
       - name: Build Custom VLC
         run: |
-          # 【304.jpg対策】Gitの身分証明をセット（ダミーでOK）
-          git config --global user.email "github-actions@example.com"
-          git config --global user.name "GitHub Actions"
+          # 1. Gitの身分証明（304.jpgのエラーを回避）
+          git config --global user.email "worker@example.com"
+          git config --global user.name "VLC Builder"
 
-          # compile.shを自動で探し出す
+          # 2. スクリプトの場所を特定（開始位置がどこでも対応）
           SCRIPT_PATH=$(find . -name compile.sh | head -n 1)
+          if [ -z "$SCRIPT_PATH" ]; then
+            echo "Error: compile.sh not found!"
+            exit 1
+          fi
           echo "Found script at: $SCRIPT_PATH"
           chmod +x "$SCRIPT_PATH"
 
-          # 環境変数をセット
+          # 3. 環境変数をセット（Wikiの推奨設定）
           export ANDROID_SDK=$ANDROID_SDK_ROOT
-          export ANDROID_NDK=$ANDROID_NDK_LATEST_HOME
+          export ANDROID_NDK=$ANDROID_SDK_ROOT/ndk-bundle
           
-          # 実行
+          # 4. 実行（./ を付けず、特定したパスを直接叩く）
           $SCRIPT_PATH -a arm64-v8a -r
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: vlc-custom-apk
+          path: "**/*.apk"
+          if-no-files-found: error
