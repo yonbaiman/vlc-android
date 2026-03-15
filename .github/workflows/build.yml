@@ -1,4 +1,4 @@
-name: Build VLC (Wiki Official Method)
+name: Build VLC (Native Final Solution)
 
 on:
   push:
@@ -19,26 +19,30 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Install Official Packages (from Wiki)
+      - name: Install Official Packages
         run: |
           sudo apt-get update
-          # Wikiに記載されているパッケージを全て網羅
           sudo apt-get install -y automake ant autopoint cmake build-essential libtool-bin \
             patch pkg-config protobuf-compiler ragel subversion unzip git \
             flex python3 wget gperf nasm
 
-      - name: Set Android Environment (Wiki Requirement)
-        run: |
-          # GitHub標準のSDKパスをWikiが求める変数名に変換
-          echo "ANDROID_SDK=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
-          # NDKはGitHubにプリインストールされている最新版を指定
-          echo "ANDROID_NDK=$ANDROID_SDK_ROOT/ndk-bundle" >> $GITHUB_ENV
-
       - name: Build Custom VLC
         run: |
-          chmod +x compile.sh
-          # Wikiの指示通り、アーキテクチャ(arm64)とリリースモード(-r)を指定
-          ./compile.sh -a arm64-v8a -r
+          # 【修正ポイント】compile.shを自動で探し出す
+          SCRIPT_PATH=$(find . -name compile.sh | head -n 1)
+          if [ -z "$SCRIPT_PATH" ]; then
+            echo "Error: compile.sh could not be found anywhere!"
+            exit 1
+          fi
+          echo "Found script at: $SCRIPT_PATH"
+          chmod +x "$SCRIPT_PATH"
+
+          # Wikiの要求通り環境変数をセット（GitHub標準の最新版を使用）
+          export ANDROID_SDK=$ANDROID_SDK_ROOT
+          export ANDROID_NDK=$ANDROID_NDK_LATEST_HOME
+          
+          # 特定したパスで実行
+          $SCRIPT_PATH -a arm64-v8a -r
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
