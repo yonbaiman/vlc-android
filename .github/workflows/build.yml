@@ -1,4 +1,4 @@
-name: Build VLC (Final Precision Strike)
+Name: Build VLC (Free Tier Optimized)
 
 on:
   push:
@@ -10,6 +10,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 【最適化1】 OOM(メモリ不足)対策としてSwap領域を8GB追加
+      - name: Allocate Swap Space
+        run: |
+          sudo fallocate -l 8G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          echo "Swap space allocated:"
+          free -h
+
       - name: Checkout Source
         uses: actions/checkout@v4
 
@@ -19,33 +29,54 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      # 【最適化2】 ccacheパッケージの追加
       - name: Install Official Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y automake ant autopoint cmake build-essential libtool-bin \
             patch pkg-config protobuf-compiler ragel subversion unzip git \
-            flex python3 wget gperf nasm
+            flex python3 wget gperf nasm ccache
+
+      # 【最適化3】 GitHub Actionsのキャッシュ機構を利用してccacheを保存・復元
+      - name: Setup ccache caching
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ${{ runner.os }}-vlc-ccache-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-vlc-ccache-
+
+      - name: Configure ccache
+        run: |
+          ccache --max-size=5G
+          ccache -z
 
       - name: Build Custom VLC
         run: |
           git config --global user.email "worker@example.com"
           git config --global user.name "VLC Builder"
 
-          # 1. NDKを「v27」に確実に固定 (311.jpgの要求に合わせる)
+          # NDKの設定
           export ANDROID_SDK=$ANDROID_SDK_ROOT
-          # GitHub Runnerに存在する v27 のパスを特定してセット
           NDK_PATH=$(ls -d $ANDROID_SDK_ROOT/ndk/27.* | head -n 1)
           export ANDROID_NDK=$NDK_PATH
-          
           echo "Using Specified NDK: $ANDROID_NDK"
 
-          # 2. 実行場所の特定
+          # 【最適化4】 メモリ消費を抑えるため並列コンパイル数を2に制限し、ccacheを有効化
+          export MAKEFLAGS="-j2"
+          export USE_CCACHE=1
+          export CCACHE_DIR=~/.cache/ccache
+
           SCRIPT_PATH=$(find . -name compile.sh | head -n 1)
           chmod +x "$SCRIPT_PATH"
           find . -name gradlew -exec chmod +x {} +
 
-          # 3. 実行
+          # 実行
           $SCRIPT_PATH -a arm64-v8a -r
+
+      # ccacheのヒット率を確認（次回以降のビルド短縮の指標）
+      - name: Check ccache statistics
+        run: ccache -s
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
