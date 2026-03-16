@@ -1,4 +1,4 @@
-name: Build VLC-Android (Kotlin UI Optimized)
+name: Build VLC-Android (Node 24 & Modern Actions Optimized)
 
 on:
   push:
@@ -9,14 +9,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      # 並列制限(-j1)を撤廃し、CPUをフル稼働させてビルド時間を劇的に短縮
       USE_CCACHE: "1"
       CCACHE_DIR: "/home/runner/.cache/ccache"
-      # Gradleのメモリ消費を2GBに抑え、デーモンを無効化（Kotlinコンパイル時のOOM対策）
       GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2048m -Dorg.gradle.daemon=false"
 
     steps:
-      # 1. インフラ強化：並列コンパイルのスパイクを吸収する12GBのSwap
+      # 1. インフラ強化（12GB Swap）
       - name: Allocate Massive Swap (12GB)
         run: |
           sudo fallocate -l 12G /swapfile_vlc || sudo dd if=/dev/zero of=/swapfile_vlc bs=1M count=12288
@@ -25,21 +23,21 @@ jobs:
           sudo swapon /swapfile_vlc
           free -h
 
-      # 2. ソース取得：あなたのKotlin改修コードを含むリポジトリを取得
+      # 2. ソース取得（Node 24対応最新版）
       - name: Checkout Source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6 # v5/v6を利用
         with:
           submodules: 'recursive'
           fetch-depth: 0
 
-      # 3. Java設定：Gradle 9系が要求するJDK 17
+      # 3. Java設定（Node 24対応最新版）
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      # 4. NDK設定：本家GitLabの正解に合わせ、r28bを導入
+      # 4. NDK設定（r28b）
       - name: Setup Android NDK (r28b)
         uses: nttld/setup-ndk@v1
         id: setup-ndk
@@ -47,7 +45,7 @@ jobs:
           ndk-version: r28b
           add-to-path: true
 
-      # 5. 依存関係：VLCのビルドに必要な標準パッケージ群
+      # 5. 依存関係のインストール
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
@@ -57,7 +55,7 @@ jobs:
             patch pkg-config protobuf-compiler ragel subversion unzip git \
             flex python3 wget gperf nasm ccache meson ninja-build bison gawk gettext
 
-      # 6. 環境構築：NDKパスの解決（ハック排除のクリーンな設定）
+      # 6. 環境構築
       - name: Setup Build Environment
         run: |
           NDK_ACTUAL_PATH="${{ steps.setup-ndk.outputs.ndk-path }}"
@@ -67,9 +65,9 @@ jobs:
           echo "ANDROID_NDK=$ANDROID_SDK_ROOT/ndk-bundle" >> $GITHUB_ENV
           echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk-bundle" >> $GITHUB_ENV
 
-      # 7A. キャッシュ最適化（Kotlin/Java層）：UI改修の開発サイクルを高速化
+      # 7A. Gradleキャッシュ（Node 24対応最新版）
       - name: Cache Gradle packages
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.gradle/caches
@@ -78,22 +76,21 @@ jobs:
           restore-keys: |
             gradle-${{ runner.os }}-
 
-      # 7B. キャッシュ最適化（C/C++層）：Cコードの再コンパイルをスキップ
+      # 7B. ccacheキャッシュ（Node 24対応最新版）
       - name: ccache cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: /home/runner/.cache/ccache
           key: vlc-ccache-${{ runner.os }}-${{ github.sha }}
           restore-keys: |
             vlc-ccache-${{ runner.os }}-
 
-      # 8. ビルド実行：KotlinUI改修版APKの生成
+      # 8. ビルド実行
       - name: Build VLC for Android (ARM64)
         run: |
           git config --global user.email "worker@example.com"
           git config --global user.name "VLC Builder"
           
-          # スクリプトの確実な特定
           SCRIPT_PATH="./buildsystem/compile.sh"
           if [ ! -f "$SCRIPT_PATH" ]; then
             SCRIPT_PATH="./compile.sh"
@@ -101,12 +98,11 @@ jobs:
           chmod +x "$SCRIPT_PATH"
           find . -name gradlew -exec chmod +x {} + || true
           
-          # 並列コアによる高速コンパイルの実行
           $SCRIPT_PATH -a arm64-v8a -r
 
-      # 9. 成果物：完成したAPKをアップロード
+      # 9. 成果物アップロード（Node 24対応最新版）
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: vlc-custom-apk
           path: "**/*.apk"
