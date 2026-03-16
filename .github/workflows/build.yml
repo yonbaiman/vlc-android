@@ -9,12 +9,14 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      # メモリ不足(OOM)を徹底的に防ぐため並列数を1に制限
+      # 既存の設定
       MAKEFLAGS: "-j1"
       USE_CCACHE: "1"
       CCACHE_DIR: "/home/runner/.cache/ccache"
-      # Gradleのメモリ消費を2GBに抑え、デーモンを無効化
       GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2048m -Dorg.gradle.daemon=false"
+      
+      # ★追加：libtoolのマクロ参照エラーを修正
+      ACLOCAL_PATH: "/usr/share/aclocal"
 
     steps:
       # 1. インフラ強化：12GBのSwapを確保して物理メモリの限界を突破
@@ -85,10 +87,12 @@ jobs:
           
           SCRIPT_PATH=$(find . -name compile.sh | head -n 1)
           chmod +x "$SCRIPT_PATH"
-          # 全てのgradlewに権限を付与
           find . -name gradlew -exec chmod +x {} + || true
           
-          # Dimensity 9500向けに最適化
+          # ★追加：スクリプト内のコア数自動計算を破壊し、強制的に1コア(直列)に制限する
+          sed -i 's/CORES=.*/CORES=1/g' "$SCRIPT_PATH"
+          
+          # Dimensity 9500向けに最適化 (実行)
           $SCRIPT_PATH -a arm64-v8a -r
 
       # 9. 成果物：完成したAPKをアップロード
