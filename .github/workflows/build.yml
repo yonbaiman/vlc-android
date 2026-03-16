@@ -1,4 +1,4 @@
-name: Build VLC (Precision Implementation v2.5 - Final Master)
+name: Build VLC-Android (Kotlin UI Optimized)
 
 on:
   push:
@@ -9,17 +9,14 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      # 既存の設定
-      MAKEFLAGS: "-j1"
+      # 並列制限(-j1)を撤廃し、CPUをフル稼働させてビルド時間を劇的に短縮
       USE_CCACHE: "1"
       CCACHE_DIR: "/home/runner/.cache/ccache"
+      # Gradleのメモリ消費を2GBに抑え、デーモンを無効化（Kotlinコンパイル時のOOM対策）
       GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2048m -Dorg.gradle.daemon=false"
-      
-      # ★追加：libtoolのマクロ参照エラーを修正
-      ACLOCAL_PATH: "/usr/share/aclocal"
 
     steps:
-      # 1. インフラ強化：12GBのSwapを確保して物理メモリの限界を突破
+      # 1. インフラ強化：並列コンパイルのスパイクを吸収する12GBのSwap
       - name: Allocate Massive Swap (12GB)
         run: |
           sudo fallocate -l 12G /swapfile_vlc || sudo dd if=/dev/zero of=/swapfile_vlc bs=1M count=12288
@@ -28,30 +25,30 @@ jobs:
           sudo swapon /swapfile_vlc
           free -h
 
-      # 2. ソース取得：あなたの改造コードと依存サブモジュールを全て取得
+      # 2. ソース取得：あなたのKotlin改修コードを含むリポジトリを取得
       - name: Checkout Source
         uses: actions/checkout@v4
         with:
           submodules: 'recursive'
           fetch-depth: 0
 
-      # 3. Java設定：Gradle 9系が要求するJDK 17を導入
+      # 3. Java設定：Gradle 9系が要求するJDK 17
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      # 4. NDK設定：r27を導入し、パスを自動取得
-      - name: Setup Android NDK (r27)
+      # 4. NDK設定：本家GitLabの正解に合わせ、r28bを導入
+      - name: Setup Android NDK (r28b)
         uses: nttld/setup-ndk@v1
         id: setup-ndk
         with:
-          ndk-version: r27
+          ndk-version: r28b
           add-to-path: true
 
-      # 5. 依存関係：最新のエラー（Libtool/m4）対策を含め全てインストール
-      - name: Install Wiki & Contrib Dependencies
+      # 5. 依存関係：VLCのビルドに必要な標準パッケージ群
+      - name: Install Build Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -60,20 +57,28 @@ jobs:
             patch pkg-config protobuf-compiler ragel subversion unzip git \
             flex python3 wget gperf nasm ccache meson ninja-build bison gawk gettext
 
-      # 6. 環境構築：VLCスクリプトを「ndk-bundle」という偽のパスで騙しつつ、NDKのバグを修正
-      - name: Setup Build Environment (Symlink Fix & NDK Patch)
+      # 6. 環境構築：NDKパスの解決（ハック排除のクリーンな設定）
+      - name: Setup Build Environment
         run: |
           NDK_ACTUAL_PATH="${{ steps.setup-ndk.outputs.ndk-path }}"
           sudo ln -sfn "$NDK_ACTUAL_PATH" "$ANDROID_SDK_ROOT/ndk-bundle"
-          
-          # ★追加: NDK r27 の CMake ポリシーバグ (Issue #2032) を強制修正
-          sudo sed -i '1s/^/cmake_policy(SET CMP0057 NEW)\n/' "$ANDROID_SDK_ROOT/ndk-bundle/build/cmake/flags.cmake"
           
           echo "ANDROID_SDK=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
           echo "ANDROID_NDK=$ANDROID_SDK_ROOT/ndk-bundle" >> $GITHUB_ENV
           echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk-bundle" >> $GITHUB_ENV
 
-      # 7. キャッシュ：ビルド時間を短縮するためのccache設定
+      # 7A. キャッシュ最適化（Kotlin/Java層）：UI改修の開発サイクルを高速化
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      # 7B. キャッシュ最適化（C/C++層）：Cコードの再コンパイルをスキップ
       - name: ccache cache
         uses: actions/cache@v4
         with:
@@ -82,20 +87,21 @@ jobs:
           restore-keys: |
             vlc-ccache-${{ runner.os }}-
 
-      # 8. ビルド実行：改造されたあなたのコードをコンパイル
+      # 8. ビルド実行：KotlinUI改修版APKの生成
       - name: Build VLC for Android (ARM64)
         run: |
           git config --global user.email "worker@example.com"
           git config --global user.name "VLC Builder"
           
-          SCRIPT_PATH=$(find . -name compile.sh | head -n 1)
+          # スクリプトの確実な特定
+          SCRIPT_PATH="./buildsystem/compile.sh"
+          if [ ! -f "$SCRIPT_PATH" ]; then
+            SCRIPT_PATH="./compile.sh"
+          fi
           chmod +x "$SCRIPT_PATH"
           find . -name gradlew -exec chmod +x {} + || true
           
-          # ★追加：スクリプト内のコア数自動計算を破壊し、強制的に1コア(直列)に制限する
-          sed -i 's/CORES=.*/CORES=1/g' "$SCRIPT_PATH"
-          
-          # Dimensity 9500向けに最適化 (実行)
+          # 並列コアによる高速コンパイルの実行
           $SCRIPT_PATH -a arm64-v8a -r
 
       # 9. 成果物：完成したAPKをアップロード
