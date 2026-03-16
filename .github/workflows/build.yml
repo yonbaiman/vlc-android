@@ -1,4 +1,4 @@
-name: Build VLC (Wiki Precision Implementation v2.1)
+name: Build VLC (Custom Source Edition v2.3 - Final Strike)
 
 on:
   push:
@@ -9,19 +9,24 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      MAKEFLAGS: "-j2" # メモリ消費抑制（OOM対策）
+      # 【最重要】初回完走のため並列数を1に制限。2回目以降は -j2 に変更可能。
+      MAKEFLAGS: "-j1"
       USE_CCACHE: "1"
       CCACHE_DIR: "/home/runner/.cache/ccache"
+      # Gradleデーモンがメモリを食い潰すのを防止
+      GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2048m -Dorg.gradle.daemon=false"
 
     steps:
-      - name: Allocate Swap (8GB)
+      # 【インフラ強化】8GBで足りなかったため12GBに増量
+      - name: Allocate Huge Swap (12GB)
         run: |
-          sudo fallocate -l 8G /swapfile_vlc || sudo dd if=/dev/zero of=/swapfile_vlc bs=1M count=8192
+          sudo fallocate -l 12G /swapfile_vlc || sudo dd if=/dev/zero of=/swapfile_vlc bs=1M count=12288
           sudo chmod 600 /swapfile_vlc
           sudo mkswap /swapfile_vlc
           sudo swapon /swapfile_vlc
+          free -h
 
-      - name: Checkout Source
+      - name: Checkout Your Custom Source
         uses: actions/checkout@v4
         with:
           submodules: 'recursive'
@@ -33,12 +38,12 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # 【v2の優れた点】公式ツールで確実にNDKをセットアップ
-      - name: Setup Android NDK (v27)
+      # 【安定性】互換性の高い r26b を使用
+      - name: Setup Android NDK (r26b)
         uses: nttld/setup-ndk@v1
         id: setup-ndk
         with:
-          ndk-version: r27
+          ndk-version: r26b
           add-to-path: true
 
       - name: Install Wiki Dependencies
@@ -48,9 +53,8 @@ jobs:
             patch pkg-config protobuf-compiler ragel subversion unzip git \
             flex python3 wget gperf nasm ccache meson ninja-build bison gawk gettext
 
-      - name: Setup Wiki Build Environment
+      - name: Setup Environment Variables
         run: |
-          # setup-ndkが提供するパスを環境変数に確実に代入
           echo "ANDROID_SDK=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
           echo "ANDROID_NDK=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
           echo "ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
@@ -63,20 +67,21 @@ jobs:
           restore-keys: |
             vlc-ccache-${{ runner.os }}-
 
-      - name: Build VLC for Android (ARM64)
+      - name: Build Your Custom VLC
         run: |
           git config --global user.email "worker@example.com"
           git config --global user.name "VLC Builder"
           
+          # スクリプト特定
           SCRIPT_PATH=$(find . -name compile.sh | head -n 1)
-          # ↓ これを追加しておくと、Gradle 周りの権限エラーを完全に封殺できます
+          chmod +x "$SCRIPT_PATH"
           find . -name gradlew -exec chmod +x {} + || true
           
-          chmod +x "$SCRIPT_PATH"
+          # 実行
           $SCRIPT_PATH -a arm64-v8a -r
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: vlc-android-apk
+          name: vlc-custom-apk
           path: "**/*.apk"
