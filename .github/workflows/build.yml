@@ -60,11 +60,14 @@ jobs:
             patch pkg-config protobuf-compiler ragel subversion unzip git \
             flex python3 wget gperf nasm ccache meson ninja-build bison gawk gettext
 
-      # 6. 環境構築：VLCスクリプトを「ndk-bundle」という偽のパスで騙す
-      - name: Setup Build Environment (Symlink Fix)
+      # 6. 環境構築：VLCスクリプトを「ndk-bundle」という偽のパスで騙しつつ、NDKのバグを修正
+      - name: Setup Build Environment (Symlink Fix & NDK Patch)
         run: |
           NDK_ACTUAL_PATH="${{ steps.setup-ndk.outputs.ndk-path }}"
           sudo ln -sfn "$NDK_ACTUAL_PATH" "$ANDROID_SDK_ROOT/ndk-bundle"
+          
+          # ★追加: NDK r27 の CMake ポリシーバグ (Issue #2032) を強制修正
+          sudo sed -i '1s/^/cmake_policy(SET CMP0057 NEW)\n/' "$ANDROID_SDK_ROOT/ndk-bundle/build/cmake/flags.cmake"
           
           echo "ANDROID_SDK=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
           echo "ANDROID_NDK=$ANDROID_SDK_ROOT/ndk-bundle" >> $GITHUB_ENV
