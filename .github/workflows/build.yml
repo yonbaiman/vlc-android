@@ -101,6 +101,43 @@ jobs:
           
           $SCRIPT_PATH -a arm64-v8a -r
 
+      # 8.5 【インフラSE最適化版】生成されたAPKに自己署名と最適化を施す
+      - name: Self-sign and Optimize Release APK
+        run: |
+          # 1. 最新の Build-Tools パスを取得 (34.0.0などの固定を避ける)
+          BUILD_TOOLS_DIR=$(ls -d $ANDROID_SDK_ROOT/build-tools/* | tail -1)
+          echo "Using Build-Tools from: $BUILD_TOOLS_DIR"
+          
+          # 2. 署名用の鍵を生成 (非対話モードで実行)
+          keytool -genkey -v -keystore vlc_self_sign.keystore \
+            -alias vlc_alias -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass vlc_password -keypass vlc_password \
+            -dname "CN=VLC Builder, OU=VLC, O=VLC, L=Tokyo, ST=Tokyo, C=JP"
+          
+          # 3. 未署名APKの探索と処理
+          # VLCのビルド構造に合わせて application/ 以下の release APK を対象にする
+          find application/app/build/outputs/apk/ -name "*-release-unsigned.apk" | while read unsigned_apk; do
+            # 出力ファイル名の定義 (unsigned を取り除く)
+            signed_apk="${unsigned_apk%-unsigned.apk}.apk"
+            echo "Processing: $unsigned_apk"
+            
+            # zipalign: 4バイト境界で最適化（リリースビルドには必須）
+            $BUILD_TOOLS_DIR/zipalign -v -f 4 "$unsigned_apk" "$signed_apk"
+            
+            # apksigner: V2/V3/V4署名を一括適用
+            $BUILD_TOOLS_DIR/apksigner sign --ks vlc_self_sign.keystore \
+              --ks-pass pass:vlc_password \
+              --key-pass pass:vlc_password \
+              --out "$signed_apk" "$signed_apk"
+            
+            # 署名の検証
+            $BUILD_TOOLS_DIR/apksigner verify --verbose "$signed_apk"
+            
+            # 元の未署名APKを削除（Artifact混入防止）
+            rm "$unsigned_apk"
+            echo "Successfully signed: $signed_apk"
+          done
+          
       # 9. 成果物アップロード (既存のステップ)
       - name: Upload Artifacts
         uses: actions/upload-artifact@v6
