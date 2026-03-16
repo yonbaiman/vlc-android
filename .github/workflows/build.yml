@@ -100,9 +100,26 @@ jobs:
           
           $SCRIPT_PATH -a arm64-v8a -r
 
-      # 9. 成果物アップロード（Node 24対応最新版）
+      # 9. 成果物アップロード (既存のステップ)
       - name: Upload Artifacts
         uses: actions/upload-artifact@v6
         with:
           name: vlc-custom-apk
           path: "**/*.apk"
+
+      # 10. 【追加】GitHub Releasesへの自動デプロイ
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')  # タグが打たれた時だけ実行
+        with:
+          files: |
+            application/app/build/outputs/apk/release/*.apk
+          name: "VLC Custom Build ${{ github.ref_name }}"
+          body: |
+            ### このリリースの変更点
+            - VideoTouchDelegate.kt の修正を反映
+            - NDK r28b + Node 24 環境によるビルド
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
