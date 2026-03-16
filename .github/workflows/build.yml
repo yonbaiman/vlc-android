@@ -1,4 +1,4 @@
-name: Build VLC (Precision Implementation v2.3 - Success Strike)
+name: Build VLC (Precision Implementation v2.5 - Final Master)
 
 on:
   push:
@@ -9,15 +9,15 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      # 初回完走を最優先し、メモリ消費を抑えるため並列数を1に制限
+      # メモリ不足(OOM)を徹底的に防ぐため並列数を1に制限
       MAKEFLAGS: "-j1"
       USE_CCACHE: "1"
       CCACHE_DIR: "/home/runner/.cache/ccache"
-      # Gradleがデーモンで居座りメモリを食い潰すのを防止
+      # Gradleのメモリ消費を2GBに抑え、デーモンを無効化
       GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2048m -Dorg.gradle.daemon=false"
 
     steps:
-      # 【インフラ強化】物理メモリの壁を超えるため12GBのSwapを確保
+      # 1. インフラ強化：12GBのSwapを確保して物理メモリの限界を突破
       - name: Allocate Massive Swap (12GB)
         run: |
           sudo fallocate -l 12G /swapfile_vlc || sudo dd if=/dev/zero of=/swapfile_vlc bs=1M count=12288
@@ -26,19 +26,21 @@ jobs:
           sudo swapon /swapfile_vlc
           free -h
 
+      # 2. ソース取得：あなたの改造コードと依存サブモジュールを全て取得
       - name: Checkout Source
         uses: actions/checkout@v4
         with:
           submodules: 'recursive'
           fetch-depth: 0
 
+      # 3. Java設定：Gradle 9系が要求するJDK 17を導入
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      # 【修正】ビルドシステムの要求に従い r27 を使用
+      # 4. NDK設定：r27を導入し、パスを自動取得
       - name: Setup Android NDK (r27)
         uses: nttld/setup-ndk@v1
         id: setup-ndk
@@ -46,20 +48,27 @@ jobs:
           ndk-version: r27
           add-to-path: true
 
-      - name: Install Wiki Dependencies
+      # 5. 依存関係：最新のエラー（Libtool/m4）対策を含め全てインストール
+      - name: Install Wiki & Contrib Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y automake ant autopoint cmake build-essential \
-            libtool libtool-bin libltdl-dev \
+          sudo apt-get install -y \
+            automake ant autopoint cmake build-essential \
+            libtool libtool-bin libltdl-dev m4 \
             patch pkg-config protobuf-compiler ragel subversion unzip git \
             flex python3 wget gperf nasm ccache meson ninja-build bison gawk gettext
 
-      - name: Setup Wiki Build Environment
+      # 6. 環境構築：VLCスクリプトを「ndk-bundle」という偽のパスで騙す
+      - name: Setup Build Environment (Symlink Fix)
         run: |
+          NDK_ACTUAL_PATH="${{ steps.setup-ndk.outputs.ndk-path }}"
+          sudo ln -sfn "$NDK_ACTUAL_PATH" "$ANDROID_SDK_ROOT/ndk-bundle"
+          
           echo "ANDROID_SDK=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
-          echo "ANDROID_NDK=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
-          echo "ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
+          echo "ANDROID_NDK=$ANDROID_SDK_ROOT/ndk-bundle" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk-bundle" >> $GITHUB_ENV
 
+      # 7. キャッシュ：ビルド時間を短縮するためのccache設定
       - name: ccache cache
         uses: actions/cache@v4
         with:
@@ -68,19 +77,21 @@ jobs:
           restore-keys: |
             vlc-ccache-${{ runner.os }}-
 
+      # 8. ビルド実行：改造されたあなたのコードをコンパイル
       - name: Build VLC for Android (ARM64)
         run: |
           git config --global user.email "worker@example.com"
           git config --global user.name "VLC Builder"
           
-          # スクリプト特定と権限付与
           SCRIPT_PATH=$(find . -name compile.sh | head -n 1)
           chmod +x "$SCRIPT_PATH"
+          # 全てのgradlewに権限を付与
           find . -name gradlew -exec chmod +x {} + || true
           
-          # 実行
+          # Dimensity 9500向けに最適化
           $SCRIPT_PATH -a arm64-v8a -r
 
+      # 9. 成果物：完成したAPKをアップロード
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
