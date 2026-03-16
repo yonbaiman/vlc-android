@@ -1,6 +1,15 @@
-# VLC for Android (Custom Mod)
+# VLC-Android Custom interaction build
 
-![Build Status](https://github.com/yonbaiman/vlc-android/actions/workflows/build.yml/badge.svg)
+[![Build Status](https://github.com/yonbaiman/vlc-android/actions/workflows/build.yml/badge.svg)](https://github.com/yonbaiman/vlc-android/actions/workflows/build.yml)
+[![Latest Release](https://img.shields.io/github/v/release/yonbaiman/vlc-android?display_name=tag&label=Download%20APK)](https://github.com/yonbaiman/vlc-android/releases/latest)
+
+## 🛠 カスタム内容
+- **VideoTouchDelegate.kt**: タッチジェスチャーの操作ロジックを最適化。
+
+## 🏗 インフラ構成 (CI/CD)
+- **Runtime**: 最新の **Node.js 24** 環境で動作。
+- **Toolchain**: 公式GitLabに準拠した **Android NDK r28b** を採用。
+- **Memory**: 仮想 **12GB Swap** 拡張により、GitHub無料枠での完走を実現。
 
 This is the official **Android** port of [VLC](https://videolan.org/vlc/).
 
