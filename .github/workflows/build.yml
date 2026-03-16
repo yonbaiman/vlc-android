@@ -1,4 +1,4 @@
-name: Build VLC (Free Tier Optimized)
+name: Build VLC (Wiki Precision Implementation)
 
 on:
   push:
@@ -8,27 +8,21 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      # Wiki推奨のビルドオプション
+      MAKEFLAGS: "-j2"
+      USE_CCACHE: "1"
+      CCACHE_DIR: "/home/runner/.cache/ccache"
 
     steps:
-      # 【インフラ最適化1】 OOM(メモリ不足)対策としてSwap領域を8GB追加（競合対策・堅牢化版）
-      - name: Allocate Swap Space
+      - name: Allocate Swap (8GB)
         run: |
-          echo "Current memory and swap status:"
-          free -h
-          
-          # システム既存の /swapfile との競合を避けるため、独自ファイル名で作成
-          # fallocateが失敗した場合はddコマンドで確実に作成するフェイルオーバーを実装
-          sudo fallocate -l 8G /swapfile_vlc || sudo dd if=/dev/zero of=/swapfile_vlc bs=1M count=8192 status=progress
-          
+          sudo fallocate -l 8G /swapfile_vlc || sudo dd if=/dev/zero of=/swapfile_vlc bs=1M count=8192
           sudo chmod 600 /swapfile_vlc
           sudo mkswap /swapfile_vlc
           sudo swapon /swapfile_vlc
-          
-          echo "New memory and swap status:"
-          free -h
 
-      # 【修正箇所】 VLC本体など、依存するサブモジュールも全て再帰的に取得する
-      - name: Checkout Source
+      - name: Checkout Source (Submodules Recursive)
         uses: actions/checkout@v4
         with:
           submodules: 'recursive'
@@ -40,59 +34,41 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # 【インフラ最適化2】 依存関係に最新のビルドツールとccacheを追加（構文エラー修正済み）
-      - name: Install Official Dependencies
+      - name: Install Wiki Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y automake ant autopoint cmake build-essential libtool-bin \
             patch pkg-config protobuf-compiler ragel subversion unzip git \
-            flex python3 wget gperf nasm ccache \
-            meson ninja-build bison gawk gettext default-jdk
+            flex python3 wget gperf nasm ccache meson ninja-build bison gawk gettext
 
-      # 【インフラ最適化3】 GitHub Actionsのキャッシュ機構を利用してccacheを保存・復元
-      - name: Setup ccache caching
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ccache
-          key: ${{ runner.os }}-vlc-ccache-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-vlc-ccache-
-
-      - name: Configure ccache
+      - name: Setup Wiki Build Environment
         run: |
-          ccache --max-size=5G
-          ccache -z
+          # Wikiが要求するNDKパスの解決
+          # GitHub Runner上の NDK 27.x の絶対パスを確実に取得
+          RAW_NDK_PATH=$(ls -d ${ANDROID_SDK_ROOT}/ndk/27.* | head -n 1)
+          CLEAN_NDK_PATH=$(realpath "$RAW_NDK_PATH")
+          
+          echo "ANDROID_SDK=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          echo "ANDROID_NDK=$CLEAN_NDK_PATH" >> $GITHUB_ENV
+          # Wikiによってはこの変数名を要求する場合がある
+          echo "ANDROID_NDK_HOME=$CLEAN_NDK_PATH" >> $GITHUB_ENV
+          
+          # パスを通す
+          echo "$CLEAN_NDK_PATH" >> $GITHUB_PATH
 
-      - name: Build Custom VLC
+      - name: Build VLC for Android (ARM64)
         run: |
           git config --global user.email "worker@example.com"
           git config --global user.name "VLC Builder"
+          
+          # スクリプトの実行（Wikiの手順を再現）
+          # 確実にパスが通っているかビルド直前にデバッグ出力
+          echo "Building with ANDROID_NDK: $ANDROID_NDK"
+          
+          ./buildsystem/compile.sh -a arm64-v8a -r
 
-          # NDKの設定
-          export ANDROID_SDK=$ANDROID_SDK_ROOT
-          NDK_PATH=$(ls -d $ANDROID_SDK_ROOT/ndk/27.* | head -n 1)
-          export ANDROID_NDK=$NDK_PATH
-          echo "Using Specified NDK: $ANDROID_NDK"
-
-          # 【インフラ最適化4】 メモリ消費を抑えるため並列コンパイル数を2に制限し、ccacheを有効化
-          export MAKEFLAGS="-j2"
-          export USE_CCACHE=1
-          export CCACHE_DIR=~/.cache/ccache
-
-          SCRIPT_PATH=$(find . -name compile.sh | head -n 1)
-          chmod +x "$SCRIPT_PATH"
-          find . -name gradlew -exec chmod +x {} +
-
-          # 実行
-          $SCRIPT_PATH -a arm64-v8a -r
-
-      # ccacheのヒット率を確認（次回以降のビルド短縮の指標）
-      - name: Check ccache statistics
-        run: ccache -s
-
-      - name: Upload APK
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: vlc-custom-apk
+          name: vlc-android-apk
           path: "**/*.apk"
-          if-no-files-found: error
