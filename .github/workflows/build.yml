@@ -1,4 +1,4 @@
-name: Build VLC (Wiki Precision Implementation)
+name: Build VLC (Wiki Precision Implementation v2.1)
 
 on:
   push:
@@ -9,8 +9,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      # Wiki推奨のビルドオプション
-      MAKEFLAGS: "-j2"
+      MAKEFLAGS: "-j2" # メモリ消費抑制（OOM対策）
       USE_CCACHE: "1"
       CCACHE_DIR: "/home/runner/.cache/ccache"
 
@@ -22,7 +21,7 @@ jobs:
           sudo mkswap /swapfile_vlc
           sudo swapon /swapfile_vlc
 
-      - name: Checkout Source (Submodules Recursive)
+      - name: Checkout Source
         uses: actions/checkout@v4
         with:
           submodules: 'recursive'
@@ -34,6 +33,14 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      # 【v2の優れた点】公式ツールで確実にNDKをセットアップ
+      - name: Setup Android NDK (v27)
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r27
+          add-to-path: true
+
       - name: Install Wiki Dependencies
         run: |
           sudo apt-get update
@@ -43,29 +50,30 @@ jobs:
 
       - name: Setup Wiki Build Environment
         run: |
-          # Wikiが要求するNDKパスの解決
-          # GitHub Runner上の NDK 27.x の絶対パスを確実に取得
-          RAW_NDK_PATH=$(ls -d ${ANDROID_SDK_ROOT}/ndk/27.* | head -n 1)
-          CLEAN_NDK_PATH=$(realpath "$RAW_NDK_PATH")
-          
+          # setup-ndkが提供するパスを環境変数に確実に代入
           echo "ANDROID_SDK=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
-          echo "ANDROID_NDK=$CLEAN_NDK_PATH" >> $GITHUB_ENV
-          # Wikiによってはこの変数名を要求する場合がある
-          echo "ANDROID_NDK_HOME=$CLEAN_NDK_PATH" >> $GITHUB_ENV
-          
-          # パスを通す
-          echo "$CLEAN_NDK_PATH" >> $GITHUB_PATH
+          echo "ANDROID_NDK=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
+
+      - name: ccache cache
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/.cache/ccache
+          key: vlc-ccache-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            vlc-ccache-${{ runner.os }}-
 
       - name: Build VLC for Android (ARM64)
         run: |
           git config --global user.email "worker@example.com"
           git config --global user.name "VLC Builder"
           
-          # スクリプトの実行（Wikiの手順を再現）
-          # 確実にパスが通っているかビルド直前にデバッグ出力
-          echo "Building with ANDROID_NDK: $ANDROID_NDK"
+          SCRIPT_PATH=$(find . -name compile.sh | head -n 1)
+          # ↓ これを追加しておくと、Gradle 周りの権限エラーを完全に封殺できます
+          find . -name gradlew -exec chmod +x {} + || true
           
-          ./buildsystem/compile.sh -a arm64-v8a -r
+          chmod +x "$SCRIPT_PATH"
+          $SCRIPT_PATH -a arm64-v8a -r
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
