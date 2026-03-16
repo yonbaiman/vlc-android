@@ -1,4 +1,4 @@
-name: Build VLC (Custom Source Edition v2.3 - Final Strike)
+name: Build VLC (Precision Implementation v2.3 - Success Strike)
 
 on:
   push:
@@ -9,16 +9,16 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      # 【最重要】初回完走のため並列数を1に制限。2回目以降は -j2 に変更可能。
+      # 初回完走を最優先し、メモリ消費を抑えるため並列数を1に制限
       MAKEFLAGS: "-j1"
       USE_CCACHE: "1"
       CCACHE_DIR: "/home/runner/.cache/ccache"
-      # Gradleデーモンがメモリを食い潰すのを防止
+      # Gradleがデーモンで居座りメモリを食い潰すのを防止
       GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2048m -Dorg.gradle.daemon=false"
 
     steps:
-      # 【インフラ強化】8GBで足りなかったため12GBに増量
-      - name: Allocate Huge Swap (12GB)
+      # 【インフラ強化】物理メモリの壁を超えるため12GBのSwapを確保
+      - name: Allocate Massive Swap (12GB)
         run: |
           sudo fallocate -l 12G /swapfile_vlc || sudo dd if=/dev/zero of=/swapfile_vlc bs=1M count=12288
           sudo chmod 600 /swapfile_vlc
@@ -26,7 +26,7 @@ jobs:
           sudo swapon /swapfile_vlc
           free -h
 
-      - name: Checkout Your Custom Source
+      - name: Checkout Source
         uses: actions/checkout@v4
         with:
           submodules: 'recursive'
@@ -38,12 +38,12 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # 【安定性】互換性の高い r26b を使用
-      - name: Setup Android NDK (r26b)
+      # 【修正】ビルドシステムの要求に従い r27 を使用
+      - name: Setup Android NDK (r27)
         uses: nttld/setup-ndk@v1
         id: setup-ndk
         with:
-          ndk-version: r26b
+          ndk-version: r27
           add-to-path: true
 
       - name: Install Wiki Dependencies
@@ -53,7 +53,7 @@ jobs:
             patch pkg-config protobuf-compiler ragel subversion unzip git \
             flex python3 wget gperf nasm ccache meson ninja-build bison gawk gettext
 
-      - name: Setup Environment Variables
+      - name: Setup Wiki Build Environment
         run: |
           echo "ANDROID_SDK=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
           echo "ANDROID_NDK=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
@@ -67,12 +67,12 @@ jobs:
           restore-keys: |
             vlc-ccache-${{ runner.os }}-
 
-      - name: Build Your Custom VLC
+      - name: Build VLC for Android (ARM64)
         run: |
           git config --global user.email "worker@example.com"
           git config --global user.name "VLC Builder"
           
-          # スクリプト特定
+          # スクリプト特定と権限付与
           SCRIPT_PATH=$(find . -name compile.sh | head -n 1)
           chmod +x "$SCRIPT_PATH"
           find . -name gradlew -exec chmod +x {} + || true
