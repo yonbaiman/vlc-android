@@ -110,36 +110,44 @@ jobs:
           # --no-checksums を削除。標準的な -a (arch) と -r (release) のみに修正。
           $SCRIPT_PATH -a arm64-v8a -r || { echo "Build failed with exit code $?"; exit 1; }
           
-      # 8.5 署名工程の修正（鍵の固定化）
-      - name: Self-sign and Optimize Release APK
+      # 8.5 署名工程の修正（GitHub Secretsを利用した鍵の固定化）
+      - name: Sign APK with Repository Secrets
         run: |
+          # 1. Android Build-Tools のパスを特定
           BUILD_TOOLS_DIR=$(ls -d $ANDROID_SDK_ROOT/build-tools/* | tail -1)
           
-          # 【重要】鍵がなければ作成、あれば再利用（またはSecretから読み出す設定にする）
-          # 今回は簡易的に、リポジトリ内に保持されない場合は固定パスで作成を試みる
-          if [ ! -f "vlc_fixed.keystore" ]; then
-            keytool -genkey -v -keystore vlc_fixed.keystore \
-              -alias vlc_alias -keyalg RSA -keysize 2048 -validity 10000 \
-              -storepass "vlc_password" -keypass "vlc_password" \
-              -dname "CN=VLC Builder, O=VLC, C=JP"
-          fi
+          # 2. GitHub Secrets から Keystore ファイルを復元 (Base64デコード)
+          echo "${{ secrets.RELEASE_KEYSTORE }}" | base64 -d > release.keystore
           
-          find application/app/build/outputs/apk/ -name "*-release-unsigned.apk" | while read unsigned_apk; do
-            signed_apk="${unsigned_apk%-unsigned.apk}.apk"
-            $BUILD_TOOLS_DIR/zipalign -v -f 4 "$unsigned_apk" "$signed_apk"
-            $BUILD_TOOLS_DIR/apksigner sign --ks vlc_fixed.keystore \
-              --ks-pass pass:vlc_password \
-              --key-pass pass:vlc_password \
-              --out "$signed_apk" "$signed_apk"
+          # 3. 未署名、または既存の APK を探して署名する
+          # VLCの出力名に合わせて柔軟に検索します
+          find application/app/build/outputs/apk/release/ -name "*.apk" | while read raw_apk; do
+            # 署名後のファイル名を定義
+            signed_apk="vlc-android-custom-signed.apk"
+            
+            echo "Signing $raw_apk..."
+            
+            # 4. apksigner による署名実行 (V2/V3署名を適用)
+            # ※ zipalignは最近のGradleビルドでは自動で行われているため、直接apksignerを実行するのが安全です
+            $BUILD_TOOLS_DIR/apksigner sign --ks release.keystore \
+              --ks-pass pass:"${{ secrets.KEYSTORE_PASSWORD }}" \
+              --key-pass pass:"${{ secrets.KEY_PASSWORD }}" \
+              --ks-key-alias "${{ secrets.KEY_ALIAS }}" \
+              --out "$signed_apk" \
+              "$raw_apk"
+              
             echo "Successfully signed: $signed_apk"
+            
+            # 検証ログを出力（インフラSEのデバッグ用）
+            $BUILD_TOOLS_DIR/apksigner verify --verbose --print-certs "$signed_apk"
           done
-          
-      # 9. 成果物アップロード (既存のステップ)
-      - name: Upload Artifacts
+
+      # 9. 署名済みAPKをArtifactとして保存
+      - name: Upload Signed APK
         uses: actions/upload-artifact@v6
         with:
-          name: vlc-custom-apk
-          path: "**/*.apk"
+          name: vlc-custom-signed
+          path: vlc-android-custom-signed.apk
 
       # 10. GitHub Releasesへの自動配送
       - name: Automatic Release Service
