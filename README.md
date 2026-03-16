@@ -1,4 +1,6 @@
-# VLC for Android
+# VLC for Android (Custom Mod)
+
+![Build Status](https://github.com/yonbaiman/vlc-android/actions/workflows/build.yml/badge.svg)
 
 This is the official **Android** port of [VLC](https://videolan.org/vlc/).
 
