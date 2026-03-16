@@ -86,18 +86,15 @@ jobs:
           restore-keys: |
             vlc-ccache-${{ runner.os }}-
 
-      # 8. ビルド実行 (Git設定の完備とエラー検知の厳密化)
+      # 8. ビルド実行 (オプションを修正し、文法エラーを解消)
       - name: Build VLC for Android (ARM64)
         run: |
           # --- 1. Gitインフラ設定 ---
-          # VLCのcontribパッチ適用(git am等)に必須の設定
           git config --global user.email "worker@example.com"
           git config --global user.name "VLC Builder"
-          # GitHub Actionsのセキュリティ制約(所有権不一致)を回避
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
           # --- 2. スクリプトのパス解決 ---
-          # バージョンによって buildsystem/ 下にある場合とルートにある場合の両方に対応
           if [ -f "./buildsystem/compile.sh" ]; then
             SCRIPT_PATH="./buildsystem/compile.sh"
           else
@@ -105,16 +102,13 @@ jobs:
           fi
           echo "Using script at: $SCRIPT_PATH"
 
-          # --- 3. 実行権限の確実な付与 ---
+          # --- 3. 実行権限の付与 ---
           chmod +x "$SCRIPT_PATH"
-          # Gradleラッパーにも権限を付与（これがないとパッケージングで落ちる）
           find . -name gradlew -exec chmod +x {} + || true
 
           # --- 4. ビルド実行 ---
-          # --no-checksums: ネットワーク由来のハッシュ不一致エラーを回避
-          # -r: リリースビルド
-          # || exit 1: 失敗時に確実にジョブをエラーとして終了させる
-          $SCRIPT_PATH -a arm64-v8a -r --no-checksums || { echo "Build failed with exit code $?"; exit 1; }
+          # --no-checksums を削除。標準的な -a (arch) と -r (release) のみに修正。
+          $SCRIPT_PATH -a arm64-v8a -r || { echo "Build failed with exit code $?"; exit 1; }
           
       # 8.5 署名工程の修正（鍵の固定化）
       - name: Self-sign and Optimize Release APK
