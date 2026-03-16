@@ -3,6 +3,7 @@ name: Build VLC-Android (Node 24 & Modern Actions Optimized)
 on:
   push:
     branches: [ master, main ]
+    tags: [ 'v*' ]  # ここを追加：v1.0.0 などのタグに反応
   workflow_dispatch:
 
 jobs:
@@ -107,19 +108,14 @@ jobs:
           name: vlc-custom-apk
           path: "**/*.apk"
 
-      # 10. 【追加】GitHub Releasesへの自動デプロイ
-      - name: Create Release
+      # 10. GitHub Releasesへの自動配送
+      - name: Automatic Release Service
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')  # タグが打たれた時だけ実行
+        if: startsWith(github.ref, 'refs/tags/') # タグが打たれた時だけ実行
         with:
           files: |
-            application/app/build/outputs/apk/release/*.apk
+            **/*.apk
           name: "VLC Custom Build ${{ github.ref_name }}"
-          body: |
-            ### このリリースの変更点
-            - VideoTouchDelegate.kt の修正を反映
-            - NDK r28b + Node 24 環境によるビルド
-          draft: false
-          prerelease: false
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
