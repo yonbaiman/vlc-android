@@ -113,8 +113,8 @@ jobs:
           # 秘密鍵の復元
           echo "${{ secrets.RELEASE_KEYSTORE }}" | base64 -d > release.keystore
           
-          # 生成されたAPKを検索して署名を実行
-          RAW_APK=$(find application/app/build/outputs/apk/release/ -name "*.apk" | head -n 1)
+          # arm64-v8aのAPKをピンポイントで指定して署名を実行
+          RAW_APK=$(find application/app/build/outputs/apk/release/ -name "*arm64-v8a*.apk" | head -n 1)
           echo "Signing $RAW_APK..."
           
           $BUILD_TOOLS_DIR/apksigner sign --ks release.keystore \
