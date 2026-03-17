@@ -2,7 +2,7 @@ name: Build VLC-Android (Node 24 Official & Official Build Env)
 
 on:
   push:
-    branches: [ stable-custom, master, main ]
+    branches: [ stable-custom ]
     tags: [ 'v*' ]
   workflow_dispatch:
 
