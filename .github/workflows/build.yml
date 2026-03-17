@@ -1,4 +1,4 @@
-name: Build VLC-Android (Released Node 24 Actions & Official Env)
+name: Build VLC-Android (Node 24 Official & Official Build Env)
 
 on:
   push:
@@ -12,13 +12,13 @@ jobs:
     env:
       USE_CCACHE: "1"
       CCACHE_DIR: "/home/runner/.cache/ccache"
-      # 公式Dockerfileから判明した安定版用リビジョン
+      # VideoLAN公式Dockerfileから抽出した最新スペック
       ANDROID_NDK_REVISION: "28.2.13676358"
       ANDROID_SDK_TOOLS: "36.0.0"
       ANDROID_API: "36"
 
     steps:
-      # 1. インフラ強化（12GB Swap）
+      # 1. メモリ不足対策（12GB Swap）
       - name: Allocate Massive Swap (12GB)
         run: |
           sudo fallocate -l 12G /swapfile_vlc || sudo dd if=/dev/zero of=/swapfile_vlc bs=1M count=12288
@@ -27,27 +27,27 @@ jobs:
           sudo swapon /swapfile_vlc
           free -h
 
-      # 2. ソース取得 (Node 24対応リリース済み v6)
+      # 2. ソース取得 (Node 24対応 正式版 v6)
       - name: Checkout Source
         uses: actions/checkout@v6
         with:
           submodules: 'recursive'
           fetch-depth: 0
 
-      # 3. Java設定 (Node 24対応リリース済み v5)
+      # 3. Java設定 (Node 24対応 正式版 v5)
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      # 4. Rust設定 (最新VLCビルドに必須)
+      # 4. Rust設定 (最新VLCビルドの必須要件)
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android, x86_64-linux-android
 
-      # 5. 依存関係のインストール
+      # 5. 依存関係のインストール (公式Dockerfileに準拠)
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
@@ -57,20 +57,28 @@ jobs:
             patch pkg-config protobuf-compiler ragel subversion unzip git \
             flex python3 wget gperf nasm ccache meson ninja-build bison gawk gettext
 
-      # 6. 環境構築 (NDK r28c & LLVMパス設定)
+      # 6. 環境構築 (物理ディレクトリ構造の解決 ＋ 環境変数)
       - name: Setup Android SDK & NDK r28c
         run: |
-          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install \
-            "build-tools;${{ env.ANDROID_SDK_TOOLS }}" \
-            "platforms;android-${{ env.ANDROID_API }}" \
-            "ndk;${{ env.ANDROID_NDK_REVISION }}"
+          # NDK r28c のインストール
+          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;${{ env.ANDROID_NDK_REVISION }}"
           
+          # パスの確定
+          SDK_PATH="$ANDROID_HOME"
           NDK_PATH="$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_REVISION }}"
-          echo "ANDROID_NDK=$NDK_PATH" >> $GITHUB_ENV
-          echo "ANDROID_NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
+          
+          # 【解決策】VLCが要求する「ndk-bundle」フォルダをシンボリックリンクで作成
+          sudo ln -sfn "$NDK_PATH" "$SDK_PATH/ndk-bundle"
+          
+          # compile.sh が環境を認識できるように変数をエクスポート
+          echo "ANDROID_SDK=$SDK_PATH" >> $GITHUB_ENV
+          echo "ANDROID_NDK=$SDK_PATH/ndk-bundle" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=$SDK_PATH/ndk-bundle" >> $GITHUB_ENV
+          
+          # NDK内のLLVMツールチェーンにパスを通す
           echo "$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
 
-      # 7. キャッシュ設定 (Node 24対応リリース済み v5)
+      # 7. キャッシュ設定 (Node 24対応 正式版 v5)
       - name: Cache Gradle & ccache
         uses: actions/cache@v5
         with:
@@ -88,15 +96,24 @@ jobs:
           git config --global user.email "worker@example.com"
           git config --global user.name "VLC Builder"
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          
+          # パス確認用のログ
+          echo "SDK Root: $ANDROID_SDK"
+          echo "NDK Path: $ANDROID_NDK"
+          
           chmod +x ./buildsystem/compile.sh
           ./buildsystem/compile.sh -a arm64-v8a -r
 
-      # 8.5 署名工程 (1Password連携鍵)
+      # 8.5 署名工程 (1Password鍵による自動署名)
       - name: Sign APK with Repository Secrets
         run: |
-          BUILD_TOOLS_DIR="$ANDROID_HOME/build-tools/${{ env.ANDROID_SDK_TOOLS }}"
+          # 署名ツール(apksigner)のパス確定
+          BUILD_TOOLS_DIR=$(ls -d $ANDROID_HOME/build-tools/${{ env.ANDROID_SDK_TOOLS }})
+          
+          # 秘密鍵の復元
           echo "${{ secrets.RELEASE_KEYSTORE }}" | base64 -d > release.keystore
           
+          # 生成されたAPKを検索して署名を実行
           RAW_APK=$(find application/app/build/outputs/apk/release/ -name "*.apk" | head -n 1)
           echo "Signing $RAW_APK..."
           
@@ -107,9 +124,10 @@ jobs:
             --out vlc-3.7.0-custom-signed.apk \
             "$RAW_APK"
           
+          # 署名検証
           $BUILD_TOOLS_DIR/apksigner verify --verbose vlc-3.7.0-custom-signed.apk
 
-      # 9. Artifact保存 (Node 24対応リリース済み v6)
+      # 9. 成果物の保存 (Node 24対応 正式版 v6)
       - name: Upload Signed APK
         uses: actions/upload-artifact@v6
         with:
