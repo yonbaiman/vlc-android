@@ -1,4 +1,4 @@
-name: Build VLC-Android (Node 24 Official & Official Build Env)
+name: Build VLC-Android (Custom)
 
 on:
   push:
