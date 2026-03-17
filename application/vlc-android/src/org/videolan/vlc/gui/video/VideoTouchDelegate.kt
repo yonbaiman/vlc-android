@@ -391,10 +391,8 @@ class VideoTouchDelegate(private val player: VideoPlayerActivity,
 
     private fun doSeekTouch(coef: Int, gesturesize: Float, seek: Boolean) {
         if (touchControls and TOUCH_FLAG_SWIPE_SEEK != 0 && initInAllowedBounds) {
-            var realCoef = coef
-            if (realCoef == 0) realCoef = 1
-            // No seek action if coef > 0.5 and gesturesize < 1cm
-            if (gesturesize.absoluteValue < 1 || !player.service!!.isSeekable) return
+            // 【改造1】nPlayer風：遊びを無くし、0.1cmの移動で即座に反応 (デフォルトは1.0)
+            if (gesturesize.absoluteValue < 0.1 || !player.service!!.isSeekable) return
 
             if (touchAction != TOUCH_NONE && touchAction != TOUCH_TAP_SEEK) return
             touchAction = TOUCH_TAP_SEEK
@@ -402,28 +400,36 @@ class VideoTouchDelegate(private val player: VideoPlayerActivity,
             val length = player.service!!.length
             val time = player.service!!.getTime()
 
-            // Size of the jump, 10 minutes max (600000), with a bi-cubic progression, for a 8cm gesture
-            var jump = (sign(gesturesize) * (600000 * (gesturesize / 8).toDouble()
-                .pow(4.0) + 3000) / realCoef).toInt()
+            // --- 物理サイズ計算ロジック ---
+            // 画面の物理的な幅と高さを取得(cm)
+            val screenWidthCm = screenConfig.metrics.widthPixels / screenConfig.metrics.xdpi * 2.54f
+            val screenHeightCm = screenConfig.metrics.heightPixels / screenConfig.metrics.ydpi * 2.54f
+            val isPortrait = screenWidthCm < screenHeightCm
 
-            // Adjust the jump
+            // 【改造2】16:9動画の「半分」の物理幅を計算
+            // 縦画面なら画面幅がそのまま動画幅。横画面なら画面高さの16:9比率が動画幅。
+            val halfVideoWidthCm = if (isPortrait) {
+                screenWidthCm / 2f
+            } else {
+                (screenHeightCm * (16f / 9f)) / 2f
+            }
+
+            // 【改造3】直線的(Linear)シーク：加速なし
+            // 仕様：動画幅の半分(halfVideoWidthCm)の移動で 90000ms (1分30秒) ジャンプ
+            val msPerCm = 90000f / halfVideoWidthCm
+            var jump = (gesturesize * msPerCm).toInt()
+
+            // --- 範囲ガード ---
             if (jump > 0 && time + jump > length) jump = (length - time).toInt()
             if (jump < 0 && time + jump < 0) jump = (-time).toInt()
 
-            //Jump !
+            // シーク実行
             if (seek && length > 0) player.seek(time + jump, length)
 
-            //Show the jump's size
+            // UI表示（nPlayer風に「+01:30 (現在の再生位置)」と表示）
             if (length > 0) player.overlayDelegate.showInfo(
-                String.format(
-                    "%s%s (%s)%s",
-                    if (jump >= 0) "+" else "",
-                    Tools.millisToString(jump.toLong()),
-                    Tools.millisToString(time + jump),
-                    if (realCoef > 1) String.format(" x%.1g", 1.0 / realCoef) else ""
-                ), 50
+                String.format("%s%s (%s)", if (jump >= 0) "+" else "", Tools.millisToString(jump.toLong()), Tools.millisToString(time + jump)), 50
             )
-            else player.overlayDelegate.showInfo(R.string.unseekable_stream, 1000)
         }
     }
 
