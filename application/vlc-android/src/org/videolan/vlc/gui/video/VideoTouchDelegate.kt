@@ -391,8 +391,15 @@ class VideoTouchDelegate(private val player: VideoPlayerActivity,
 
     private fun doSeekTouch(coef: Int, gesturesize: Float, seek: Boolean) {
         if (touchControls and TOUCH_FLAG_SWIPE_SEEK != 0 && initInAllowedBounds) {
+            // --- 改造：TSファイル（および類似形式）の判定 ---
+            val path = player.service?.currentMediaWrapper?.uri?.path
+            val isTsFile = path?.run { 
+                endsWith(".ts", true) || endsWith(".m2ts", true) || endsWith(".mts", true) 
+            } ?: false
+            
             // 【改造1】nPlayer風：遊びを無くし、0.1cmの移動で即座に反応 (デフォルトは1.0)
-            if (gesturesize.absoluteValue < 0.1 || !player.service!!.isSeekable) return
+            // 修正ポイント：isSeekable が false でも、TS系ファイルならガードを突破させる
+            if (gesturesize.absoluteValue < 0.1 || (!player.service!!.isSeekable && !isTsFile)) return
 
             if (touchAction != TOUCH_NONE && touchAction != TOUCH_TAP_SEEK) return
             touchAction = TOUCH_TAP_SEEK
