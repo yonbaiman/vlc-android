@@ -397,24 +397,24 @@ class VideoTouchDelegate(private val player: VideoPlayerActivity,
                 endsWith(".ts", true) || endsWith(".m2ts", true) || endsWith(".mts", true) 
             } ?: false
             
-            // 【改造1】nPlayer風：遊びを無くし、0.1cmの移動で即座に反応 (デフォルトは1.0)
-            // 修正ポイント：isSeekable が false でも、TS系ファイルならガードを突破させる
+            // 【改造1】nPlayer風：遊びを無くし、0.1cmの移動で即座に反応
             if (gesturesize.absoluteValue < 0.1 || (!player.service!!.isSeekable && !isTsFile)) return
 
             if (touchAction != TOUCH_NONE && touchAction != TOUCH_TAP_SEEK) return
             touchAction = TOUCH_TAP_SEEK
 
-            val length = player.service!!.length
+            val actualLength = player.service!!.length
             val time = player.service!!.getTime()
+            
+            // 【重要】TSファイル等で長さが0の場合、1時間(3600000ms)を仮想の長さとして扱う
+            val virtualLength = if (actualLength <= 0L) 3600000L else actualLength
 
             // --- 物理サイズ計算ロジック ---
-            // 画面の物理的な幅と高さを取得(cm)
             val screenWidthCm = screenConfig.metrics.widthPixels / screenConfig.metrics.xdpi * 2.54f
             val screenHeightCm = screenConfig.metrics.heightPixels / screenConfig.metrics.ydpi * 2.54f
             val isPortrait = screenWidthCm < screenHeightCm
 
             // 【改造2】16:9動画の「半分」の物理幅を計算
-            // 縦画面なら画面幅がそのまま動画幅。横画面なら画面高さの16:9比率が動画幅。
             val halfVideoWidthCm = if (isPortrait) {
                 screenWidthCm / 2f
             } else {
@@ -422,20 +422,48 @@ class VideoTouchDelegate(private val player: VideoPlayerActivity,
             }
 
             // 【改造3】直線的(Linear)シーク：加速なし
-            // 仕様：動画幅の半分(halfVideoWidthCm)の移動で 90000ms (1分30秒) ジャンプ
             val msPerCm = 90000f / halfVideoWidthCm
             var jump = (gesturesize * msPerCm).toInt()
 
-            // --- 範囲ガード ---
-            if (jump > 0 && time + jump > length) jump = (length - time).toInt()
-            if (jump < 0 && time + jump < 0) jump = (-time).toInt()
+            // --- 範囲ガード (実際の長さが取得できている場合のみ適用) ---
+            if (actualLength > 0L) {
+                if (jump > 0 && time + jump > actualLength) jump = (actualLength - time).toInt()
+                if (jump < 0 && time + jump < 0) jump = (-time).toInt()
+            }
 
-            // シーク実行
-            if (seek && length > 0) player.seek(time + jump, length)
+            // --- シーク実行 ---
+            if (seek) {
+                if (actualLength > 0L) {
+                    // 通常ファイル：Time(ミリ秒) でシーク
+                    player.seek(time + jump, actualLength)
+                } else {
+                    // TSファイル：Position(割合 0.0〜1.0) で強制シーク
+                    val currentPos = player.service!!.position
+                    
+                    // スワイプした秒数(jump)が、仮想の全体長(virtualLength)に対して何％にあたるかを計算
+                    val jumpPos = jump.toFloat() / virtualLength.toFloat()
+                    var newPos = currentPos + jumpPos
+                    
+                    // 0.0 ~ 1.0 の範囲に収める
+                    if (newPos < 0f) newPos = 0f
+                    if (newPos > 1f) newPos = 1f
+                    
+                    // シークバーのタップと同じく、バイトオフセットへのジャンプを要求する
+                    player.service!!.position = newPos
+                }
+            }
 
-            // UI表示（nPlayer風に「+01:30 (現在の再生位置)」と表示）
-            if (length > 0) player.overlayDelegate.showInfo(
-                String.format("%s%s (%s)", if (jump >= 0) "+" else "", Tools.millisToString(jump.toLong()), Tools.millisToString(time + jump)), 50
+            // --- UI表示 ---
+            // TSファイルの場合は、現在のPositionから仮の時刻を逆算して表示する
+            val displayTime = if (actualLength > 0L) {
+                time + jump
+            } else {
+                (player.service!!.position * virtualLength).toLong() + jump
+            }
+            
+            // length > 0 のガードを外し、無条件でUIを描画させる
+            player.overlayDelegate.showInfo(
+                String.format("%s%s (%s)", if (jump >= 0) "+" else "", Tools.millisToString(jump.toLong()), Tools.millisToString(displayTime)), 50
             )
         }
     }
