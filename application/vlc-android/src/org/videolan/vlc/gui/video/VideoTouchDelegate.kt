@@ -438,7 +438,8 @@ class VideoTouchDelegate(private val player: VideoPlayerActivity,
                     player.seek(time + jump, actualLength)
                 } else {
                     // TSファイル：Position(割合 0.0〜1.0) で強制シーク
-                    val currentPos = player.service!!.position
+                    // positionはprivateなので、公開されているgetPosition()を使用する
+                    val currentPos = player.service!!.getPosition()
                     
                     // スワイプした秒数(jump)が、仮想の全体長(virtualLength)に対して何％にあたるかを計算
                     val jumpPos = jump.toFloat() / virtualLength.toFloat()
@@ -448,8 +449,8 @@ class VideoTouchDelegate(private val player: VideoPlayerActivity,
                     if (newPos < 0f) newPos = 0f
                     if (newPos > 1f) newPos = 1f
                     
-                    // シークバーのタップと同じく、バイトオフセットへのジャンプを要求する
-                    player.service!!.position = newPos
+                    // 直接代入（.position = newPos）ではなく、公開APIのsetPositionを使用する
+                    player.service!!.setPosition(newPos)
                 }
             }
 
@@ -458,12 +459,13 @@ class VideoTouchDelegate(private val player: VideoPlayerActivity,
             val displayTime = if (actualLength > 0L) {
                 time + jump
             } else {
-                (player.service!!.position * virtualLength).toLong() + jump
+                // ここでもgetPosition()を使用して計算
+                (player.service!!.getPosition() * virtualLength).toLong() + jump
             }
             
-            // length > 0 のガードを外し、無条件でUIを描画させる
+            // UIを描画
             player.overlayDelegate.showInfo(
-                String.format("%s%s (%s)", if (jump >= 0) "+" else "", Tools.millisToString(jump.toLong()), Tools.millisToString(displayTime)), 50
+                String.format("%s%s (%s)", if (jump >= 0) "+" else "", Tools.millisToString(jump), Tools.millisToString(displayTime)), 1000
             )
         }
     }
