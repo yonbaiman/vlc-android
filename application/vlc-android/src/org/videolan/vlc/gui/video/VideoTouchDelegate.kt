@@ -425,47 +425,26 @@ class VideoTouchDelegate(private val player: VideoPlayerActivity,
             val msPerCm = 90000f / halfVideoWidthCm
             var jump = (gesturesize * msPerCm).toInt()
 
-            // --- 範囲ガード (実際の長さが取得できている場合のみ適用) ---
-            if (actualLength > 0L) {
-                if (jump > 0 && time + jump > actualLength) jump = (actualLength - time).toInt()
-                if (jump < 0 && time + jump < 0) jump = (-time).toInt()
-            }
+            // --- 範囲ガード ---
+            // 実際の長さと仮想長のどちらを使うかを判定し、安全な範囲に収める
+            val targetLength = if (actualLength > 0L) actualLength else virtualLength
+            if (jump > 0 && time + jump > targetLength) jump = (targetLength - time).toInt()
+            if (jump < 0 && time + jump < 0) jump = (-time).toInt()
 
             // --- シーク実行 ---
             if (seek) {
-                if (actualLength > 0L) {
-                    // 通常ファイル：Time(ミリ秒) でシーク
-                    player.seek(time + jump, actualLength)
-                } else {
-                    // TSファイル：Position(割合 0.0〜1.0) で強制シーク
-                    // positionはprivateなので、公開されているgetPosition()を使用する
-                    val currentPos = player.service!!.getPosition()
-                    
-                    // スワイプした秒数(jump)が、仮想の全体長(virtualLength)に対して何％にあたるかを計算
-                    val jumpPos = jump.toFloat() / virtualLength.toFloat()
-                    var newPos = currentPos + jumpPos
-                    
-                    // 0.0 ~ 1.0 の範囲に収める
-                    if (newPos < 0f) newPos = 0f
-                    if (newPos > 1f) newPos = 1f
-                    
-                    // 直接代入（.position = newPos）ではなく、公開APIのsetPositionを使用する
-                    player.service!!.setPosition(newPos)
-                }
+                // 通常ファイル・TSファイル問わず、公開APIの seek() でミリ秒ベースのシークに統一
+                // これにより、存在しない/privateな position 関連のメソッド呼び出しエラーを解消
+                player.seek(time + jump, targetLength)
             }
 
             // --- UI表示 ---
-            // TSファイルの場合は、現在のPositionから仮の時刻を逆算して表示する
-            val displayTime = if (actualLength > 0L) {
-                time + jump
-            } else {
-                // ここでもgetPosition()を使用して計算
-                (player.service!!.getPosition() * virtualLength).toLong() + jump
-            }
+            // TSファイルでも time + jump をそのまま現在時刻として扱う
+            val displayTime = time + jump
             
-            // UIを描画
+            // UIを描画 (jump を .toLong() にキャストして Argument type mismatch を解消)
             player.overlayDelegate.showInfo(
-                String.format("%s%s (%s)", if (jump >= 0) "+" else "", Tools.millisToString(jump), Tools.millisToString(displayTime)), 1000
+                String.format("%s%s (%s)", if (jump >= 0) "+" else "", Tools.millisToString(jump.toLong()), Tools.millisToString(displayTime)), 1000
             )
         }
     }
